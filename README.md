@@ -8,5 +8,5 @@ Turtube is a YouTube downloader API built with Bun.
 - [x] Basic download functionality
 - [x] Queued downloads
 - [x] Multiple concurrent workers
-- [ ] Automatic ytdlp installation
+- [x] Automatic ytdlp installation
 - [ ] Authentication
