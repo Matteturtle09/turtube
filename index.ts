@@ -12,8 +12,50 @@ workers.forEach(worker => {
     worker.start();
 });
 
+const middlewareInvoker = (...fns) => (req, server) => {
+    let i = 0;
+    const next = () => fns[i++]?.(req, server, next);
+    return next();
+};
+
+// Buffering of the Allowed Api Keys
+const allowedKeyBuffers: Buffer[] = (process.env.API_KEYS || "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter(Boolean)
+    .map((key) => Buffer.from(key));
+
+function isApiKeyValid(apiKey: string): boolean {
+    const inputBuffer = Buffer.from(apiKey);
+
+    // Cycles on every registered api key until it finds one that is valid.
+    return allowedKeyBuffers.some((keyBuffer) => {
+        
+        // This function does not leak timing information that would allow an attacker to guess one of the values.
+        return inputBuffer.length === keyBuffer.length && crypto.timingSafeEqual(inputBuffer, keyBuffer)
+    })
+}
+
 const server = Bun.serve({
     routes: {
+        "/api": {
+            GET:
+                middlewareInvoker(async (req: Request, server: any, next: () => any) => {
+
+                    const apiKey = req.headers.get("x-api-key");
+
+                    if (!apiKey) {
+                        return Response.json({ message: "api-key is missing" }, { status: 403 })
+                    }
+
+                    if (!isApiKeyValid(apiKey)) {
+                        return Response.json({ message: "api-key is not valid." }, { status: 403 })
+                    }
+
+                    const res = await next();
+                    return res;
+                })
+        },
         "/api/status": new Response("OK"),
         "/api/downloads": {
             POST: async req => {
@@ -63,7 +105,7 @@ const server = Bun.serve({
                     return Response.json({ message: "There was an unexpected error while downloading the video" }, { status: 500 })
                 }
 
-                if( job.status === "processing"){
+                if (job.status === "processing") {
                     return Response.json({ id: job.id, status: "processing", progress: job.progress }, { status: 202 })
                 }
 
@@ -91,7 +133,7 @@ const server = Bun.serve({
                     glob.scan(`./downloads/${req.params.id}`)
                 );
 
-                if(files.length === 0){
+                if (files.length === 0) {
                     return Response.json({ message: "File not found" }, { status: 404 });
                 }
 
