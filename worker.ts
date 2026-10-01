@@ -23,7 +23,7 @@ class Worker {
             try {
                 await this.ytdlp
                     .download(nextJob.sourceUrl)
-                    .format({ filter: 'videoonly', quality: '480p', type: 'mp4' })
+                    .format({ filter: nextJob.options.muted ? 'videoonly' : 'mergevideo', quality: nextJob.options.resolution, type: 'mp4' })
                     .output(`./downloads/${nextJob.id}`)
                     .embedThumbnail()
                     .on('progress', (p) => nextJob.progress = p.percentage ?? 0)
