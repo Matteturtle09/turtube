@@ -1,7 +1,6 @@
 import { resolve } from "bun";
 import type Queue from "./queue";
 import { YtDlp } from "ytdlp-nodejs";
-import type { Job } from "./queue";
 
 class Worker {
     id: Number;

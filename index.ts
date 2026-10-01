@@ -1,4 +1,5 @@
 import Queue, { type Job } from "./queue";
+import type { JobOptions } from "./types/job";
 import isValidUUID from "./util/isValidUUID";
 import Worker from "./worker";
 
@@ -25,12 +26,12 @@ const allowedKeyBuffers: Buffer[] = (process.env.API_KEYS || "")
     .filter(Boolean)
     .map((key) => Buffer.from(key));
 
-function isApiKeyValid(apiKey: string): boolean {
+function isApiKeyValid(apiKey: string, allowedKeyBuffers: Buffer<ArrayBufferLike>[]): boolean {
     const inputBuffer = Buffer.from(apiKey);
 
     // Cycles on every registered api key until it finds one that is valid.
     return allowedKeyBuffers.some((keyBuffer) => {
-        
+
         // This function does not leak timing information that would allow an attacker to guess one of the values.
         return inputBuffer.length === keyBuffer.length && crypto.timingSafeEqual(inputBuffer, keyBuffer)
     })
@@ -48,7 +49,7 @@ const server = Bun.serve({
                         return Response.json({ message: "api-key is missing" }, { status: 403 })
                     }
 
-                    if (!isApiKeyValid(apiKey)) {
+                    if (!isApiKeyValid(apiKey, allowedKeyBuffers)) {
                         return Response.json({ message: "api-key is not valid." }, { status: 403 })
                     }
 
@@ -56,31 +57,48 @@ const server = Bun.serve({
                     return res;
                 })
         },
+
         "/api/status": new Response("OK"),
+
         "/api/downloads": {
             POST: async req => {
-                const body = await req.json();
 
-                if (typeof body.source_url !== "string") {
-                    return Response.json({ message: "source_url must be string" }, { status: 400 })
+                const body: Job = await req.json();
+
+                if (typeof body.sourceUrl !== "string") {
+                    return Response.json({ message: "sourceUrl must be string" }, { status: 400 })
                 }
 
-                let source_url: URL;
+                let sourceUrl: URL;
 
                 try {
-                    source_url = new URL(body.source_url);
+                    sourceUrl = new URL(body.sourceUrl);
                 } catch (error) {
-                    return Response.json({ message: "source_url is not a valid URL" }, { status: 400 })
+                    return Response.json({ message: "sourceUrl is not a valid URL" }, { status: 400 })
                 }
 
-                if (source_url.protocol !== "https:" || source_url.hostname !== "youtu.be") {
-                    return Response.json({ message: "source_url must be a valid youtube url" }, { status: 400 })
+                if (sourceUrl.protocol !== "https:" || sourceUrl.hostname !== "youtu.be") {
+                    return Response.json({ message: "sourceUrl must be a valid youtube url" }, { status: 400 })
                 }
 
+                const videoId = sourceUrl.pathname.slice(1);
 
+                if (!videoId || videoId.includes("/")) {
+                    return Response.json(
+                        { message: "sourceUrl must contain a valid YouTube video ID" },
+                        { status: 400 }
+                    );
+                }
+
+                const { resolution, muted }: JobOptions = body.options ?? { resolution: 'best', muted: false }
+                
                 const job: Job = {
                     id: crypto.randomUUID(),
-                    sourceUrl: String(source_url)
+                    sourceUrl: String(sourceUrl),
+                    options: {
+                        resolution: resolution,
+                        muted: muted,
+                    }
                 }
 
                 queue.add(job)
@@ -88,6 +106,7 @@ const server = Bun.serve({
                 return Response.json({ id: job.id, status: "queued" }, { status: 200 });
             }
         },
+
         "/api/downloads/:id": {
             GET: async req => {
 

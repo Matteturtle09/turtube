@@ -1,10 +1,5 @@
+import type { Job } from "./types/job";
 
-export type Job = {
-    id: string
-    sourceUrl: string
-    status?: 'queued' | 'claimed' | 'processing' | 'completed' | 'error'
-    progress?: number;
-}
 
 class Queue {
     private jobs: Job[];
