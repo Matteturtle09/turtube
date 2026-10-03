@@ -39,29 +39,20 @@ function isApiKeyValid(apiKey: string, allowedKeyBuffers: Buffer<ArrayBufferLike
 
 const server = Bun.serve({
     routes: {
-        "/api": {
-            GET:
-                middlewareInvoker(async (req: Request, server: any, next: () => any) => {
-
-                    const apiKey = req.headers.get("x-api-key");
-
-                    if (!apiKey) {
-                        return Response.json({ message: "api-key is missing" }, { status: 403 })
-                    }
-
-                    if (!isApiKeyValid(apiKey, allowedKeyBuffers)) {
-                        return Response.json({ message: "api-key is not valid." }, { status: 403 })
-                    }
-
-                    const res = await next();
-                    return res;
-                })
-        },
-
         "/api/status": new Response("OK"),
 
         "/api/downloads": {
             POST: async req => {
+
+                const apiKey = req.headers.get("x-api-key");
+
+                if (!apiKey) {
+                    return Response.json({ message: "api-key is missing" }, { status: 403 })
+                }
+
+                if (!isApiKeyValid(apiKey, allowedKeyBuffers)) {
+                    return Response.json({ message: "api-key is not valid." }, { status: 403 })
+                }
 
                 const body: Job = await req.json();
 
@@ -91,7 +82,7 @@ const server = Bun.serve({
                 }
 
                 const { resolution, muted }: JobOptions = body.options ?? { resolution: 'best', muted: false }
-                
+
                 const job: Job = {
                     id: crypto.randomUUID(),
                     sourceUrl: String(sourceUrl),
@@ -109,6 +100,16 @@ const server = Bun.serve({
 
         "/api/downloads/:id": {
             GET: async req => {
+
+                const apiKey = req.headers.get("x-api-key");
+
+                if (!apiKey) {
+                    return Response.json({ message: "api-key is missing" }, { status: 403 })
+                }
+
+                if (!isApiKeyValid(apiKey, allowedKeyBuffers)) {
+                    return Response.json({ message: "api-key is not valid." }, { status: 403 })
+                }
 
                 if (!isValidUUID(req.params.id)) {
                     return Response.json({ message: "The uuid is not valid" }, { status: 400 })
@@ -141,6 +142,16 @@ const server = Bun.serve({
 
         "/api/downloads/:id/file": {
             GET: async req => {
+
+                const apiKey = req.headers.get("x-api-key");
+
+                if (!apiKey) {
+                    return Response.json({ message: "api-key is missing" }, { status: 403 })
+                }
+
+                if (!isApiKeyValid(apiKey, allowedKeyBuffers)) {
+                    return Response.json({ message: "api-key is not valid." }, { status: 403 })
+                }
 
                 if (!isValidUUID(req.params.id)) {
                     return Response.json({ message: "The uuid is not valid" }, { status: 400 });
