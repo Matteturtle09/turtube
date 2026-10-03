@@ -39,34 +39,11 @@ function isApiKeyValid(apiKey: string, allowedKeyBuffers: Buffer<ArrayBufferLike
 
 const server = Bun.serve({
     routes: {
-<<<<<<< HEAD
-=======
-        "/api": {
-            GET:
-                middlewareInvoker(async (req: Request, server: any, next: () => any) => {
-
-                    const apiKey = req.headers.get("x-api-key");
-
-                    if (!apiKey) {
-                        return Response.json({ message: "api-key is missing" }, { status: 403 })
-                    }
-
-                    if (!isApiKeyValid(apiKey, allowedKeyBuffers)) {
-                        return Response.json({ message: "api-key is not valid." }, { status: 403 })
-                    }
-
-                    const res = await next();
-                    return res;
-                })
-        },
-
->>>>>>> bec4d3daa0c1a87e3c39d0f4e2045a5a7a189905
         "/api/status": new Response("OK"),
 
         "/api/downloads": {
             POST: async req => {
 
-<<<<<<< HEAD
                 const apiKey = req.headers.get("x-api-key");
 
                 if (!apiKey) {
@@ -83,14 +60,6 @@ const server = Bun.serve({
                     return Response.json({ message: "sourceUrl must be string" }, { status: 400 })
                 }
 
-=======
-                const body: Job = await req.json();
-
-                if (typeof body.sourceUrl !== "string") {
-                    return Response.json({ message: "sourceUrl must be string" }, { status: 400 })
-                }
-
->>>>>>> bec4d3daa0c1a87e3c39d0f4e2045a5a7a189905
                 let sourceUrl: URL;
 
                 try {
@@ -104,18 +73,6 @@ const server = Bun.serve({
                 }
 
                 const videoId = sourceUrl.pathname.slice(1);
-<<<<<<< HEAD
-
-                if (!videoId || videoId.includes("/")) {
-                    return Response.json(
-                        { message: "sourceUrl must contain a valid YouTube video ID" },
-                        { status: 400 }
-                    );
-                }
-
-                const { resolution, muted }: JobOptions = body.options ?? { resolution: 'best', muted: false }
-=======
->>>>>>> bec4d3daa0c1a87e3c39d0f4e2045a5a7a189905
 
                 if (!videoId || videoId.includes("/")) {
                     return Response.json(
