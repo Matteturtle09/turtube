@@ -15,6 +15,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "elysia": "^1.4.30",
     "ytdlp-nodejs": "^3.4.5"
   }
 }

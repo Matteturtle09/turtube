@@ -1,7 +1,9 @@
-import Queue, { type Job } from "./queue";
+import Queue from "./queue";
+import type { Job } from "./types/job";
 import type { JobOptions } from "./types/job";
 import isValidUUID from "./util/isValidUUID";
 import Worker from "./worker";
+import { Elysia } from "elysia"
 
 const queue = new Queue()
 
@@ -37,151 +39,170 @@ function isApiKeyValid(apiKey: string, allowedKeyBuffers: Buffer<ArrayBufferLike
     })
 }
 
-const server = Bun.serve({
-    routes: {
-        "/api/status": new Response("OK"),
+const server = new Elysia()
+    .onBeforeHandle(({ request, set }) => {
+        const apiKey = request.headers.get("x-api-key")
 
-        "/api/downloads": {
-            POST: async req => {
+        if (!apiKey) {
+            set.status = 403
+            return { message: "api-key is missing" }
+        }
 
-                const apiKey = req.headers.get("x-api-key");
+        if (!isApiKeyValid(apiKey, allowedKeyBuffers)) {
+            set.status = 403
+            return { message: "api-key is not valid." }
+        }
+    })
 
-                if (!apiKey) {
-                    return Response.json({ message: "api-key is missing" }, { status: 403 })
-                }
+    .get("/api/status", () => "OK")
 
-                if (!isApiKeyValid(apiKey, allowedKeyBuffers)) {
-                    return Response.json({ message: "api-key is not valid." }, { status: 403 })
-                }
+    .post("/api/downloads", async ({ request, set }) => {
+        let body: Job
 
-                const body: Job = await req.json();
+        try {
+            body = await request.json()
+        } catch {
+            set.status = 400
+            return { message: "Invalid JSON body" }
+        }
 
-                if (typeof body.sourceUrl !== "string") {
-                    return Response.json({ message: "sourceUrl must be string" }, { status: 400 })
-                }
+        if (typeof body.sourceUrl !== "string") {
+            set.status = 400
+            return { message: "sourceUrl must be string" }
+        }
 
-                let sourceUrl: URL;
+        let sourceUrl: URL
 
-                try {
-                    sourceUrl = new URL(body.sourceUrl);
-                } catch (error) {
-                    return Response.json({ message: "sourceUrl is not a valid URL" }, { status: 400 })
-                }
+        try {
+            sourceUrl = new URL(body.sourceUrl)
+        } catch {
+            set.status = 400
+            return { message: "sourceUrl is not a valid URL" }
+        }
 
-                if (sourceUrl.protocol !== "https:" || sourceUrl.hostname !== "youtu.be") {
-                    return Response.json({ message: "sourceUrl must be a valid youtube url" }, { status: 400 })
-                }
+        if (
+            sourceUrl.protocol !== "https:" ||
+            sourceUrl.hostname !== "youtu.be"
+        ) {
+            set.status = 400
+            return { message: "sourceUrl must be a valid youtube url" }
+        }
 
-                const videoId = sourceUrl.pathname.slice(1);
+        const videoId = sourceUrl.pathname.slice(1)
 
-                if (!videoId || videoId.includes("/")) {
-                    return Response.json(
-                        { message: "sourceUrl must contain a valid YouTube video ID" },
-                        { status: 400 }
-                    );
-                }
-
-                const { resolution, muted }: JobOptions = body.options ?? { resolution: 'best', muted: false }
-                
-                const job: Job = {
-                    id: crypto.randomUUID(),
-                    sourceUrl: String(sourceUrl),
-                    options: {
-                        resolution: resolution,
-                        muted: muted,
-                    }
-                }
-
-                queue.add(job)
-
-                return Response.json({ id: job.id, status: "queued" }, { status: 200 });
-            }
-        },
-
-        "/api/downloads/:id": {
-            GET: async req => {
-
-                const apiKey = req.headers.get("x-api-key");
-
-                if (!apiKey) {
-                    return Response.json({ message: "api-key is missing" }, { status: 403 })
-                }
-
-                if (!isApiKeyValid(apiKey, allowedKeyBuffers)) {
-                    return Response.json({ message: "api-key is not valid." }, { status: 403 })
-                }
-
-                if (!isValidUUID(req.params.id)) {
-                    return Response.json({ message: "The uuid is not valid" }, { status: 400 })
-                }
-
-                const job: Job | undefined = queue.getJobById(req.params.id);
-
-                if (job === undefined) {
-                    return Response.json({ message: "No download found for this uuid" }, { status: 404 })
-                }
-
-                if (job.status == "error") {
-                    return Response.json({ message: "There was an unexpected error while downloading the video" }, { status: 500 })
-                }
-
-                if (job.status === "processing") {
-                    return Response.json({ id: job.id, status: "processing", progress: job.progress }, { status: 202 })
-                }
-
-                if (job.status !== "completed") {
-                    return Response.json({ message: "The video is still being downloaded, try again in a minute" }, { status: 202 })
-                }
-
-                return Response.json({ id: job.id, status: "completed", resource_url: `/api/downloads/${job.id}/file` }, { status: 200 })
-
-            }
-
-
-        },
-
-        "/api/downloads/:id/file": {
-            GET: async req => {
-
-                const apiKey = req.headers.get("x-api-key");
-
-                if (!apiKey) {
-                    return Response.json({ message: "api-key is missing" }, { status: 403 })
-                }
-
-                if (!isApiKeyValid(apiKey, allowedKeyBuffers)) {
-                    return Response.json({ message: "api-key is not valid." }, { status: 403 })
-                }
-
-                if (!isValidUUID(req.params.id)) {
-                    return Response.json({ message: "The uuid is not valid" }, { status: 400 });
-                }
-
-                const glob = new Bun.Glob("*.mp4");
-
-                const files = await Array.fromAsync(
-                    glob.scan(`./downloads/${req.params.id}`)
-                );
-
-                if (files.length === 0) {
-                    return Response.json({ message: "File not found" }, { status: 404 });
-                }
-
-                const file = Bun.file(`./downloads/${req.params.id}/${files[0]}`);
-
-                if (!await file.exists()) {
-                    return Response.json({ message: "File not found" }, { status: 404 });
-                }
-
-                return new Response(file, {
-                    headers: {
-                        "Content-Type": "video/mp4",
-                        "Content-Disposition": `attachment; filename="${req.params.id}.mp4"`
-                    }
-                });
+        if (!videoId || videoId.includes("/")) {
+            set.status = 400
+            return {
+                message: "sourceUrl must contain a valid YouTube video ID"
             }
         }
-    }
-})
 
-console.log(`[TURTUBE] Server running at ${server.url}`);
+        const {
+            resolution = "best",
+            muted = false
+        } = body.options ?? {}
+
+        const job: Job = {
+            id: crypto.randomUUID(),
+            sourceUrl: String(sourceUrl),
+            options: {
+                resolution,
+                muted
+            }
+        }
+
+        queue.add(job)
+
+        set.status = 200
+
+        return {
+            id: job.id,
+            status: "queued"
+        }
+    })
+
+    .get("/api/downloads/:id", async ({ params, set }) => {
+        if (!isValidUUID(params.id)) {
+            set.status = 400
+            return { message: "The uuid is not valid" }
+        }
+
+        const job = queue.getJobById(params.id)
+
+        if (job === undefined) {
+            set.status = 404
+            return {
+                message: "No download found for this uuid"
+            }
+        }
+
+        if (job.status === "error") {
+            set.status = 500
+            return {
+                message: "There was an unexpected error while downloading the video"
+            }
+        }
+
+        if (job.status === "processing") {
+            set.status = 202
+            return {
+                id: job.id,
+                status: "processing",
+                progress: job.progress
+            }
+        }
+
+        if (job.status !== "completed") {
+            set.status = 202
+            return {
+                message: "The video is still being downloaded, try again in a minute"
+            }
+        }
+
+        set.status = 200
+
+        return {
+            id: job.id,
+            status: "completed",
+            resource_url: `/api/downloads/${job.id}/file`
+        }
+    })
+
+    .get("/api/downloads/:id/file", async ({ params, set }) => {
+        if (!isValidUUID(params.id)) {
+            set.status = 400
+            return { message: "The uuid is not valid" }
+        }
+
+        const glob = new Bun.Glob("*.mp4")
+
+        const files = await Array.fromAsync(
+            glob.scan(`./downloads/${params.id}`)
+        )
+
+        if (files.length === 0) {
+            set.status = 404
+            return { message: "File not found" }
+        }
+
+        const file = Bun.file(
+            `./downloads/${params.id}/${files[0]}`
+        )
+
+        if (!await file.exists()) {
+            set.status = 404
+            return { message: "File not found" }
+        }
+
+        return new Response(file, {
+            headers: {
+                "Content-Type": "video/mp4",
+                "Content-Disposition":
+                    `attachment; filename="${params.id}.mp4"`
+            }
+        })
+    })
+
+    .listen(3000)
+
+console.log(`[TURTUBE] Server running at  ${server.server?.hostname}:${server.server?.port}`);
